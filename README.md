@@ -12,7 +12,7 @@
 
 ## Download APK
 
-See [GitHub Releases](https://github.com/agalyaraja18/WishWallet/releases) for downloadable APKs. No APK release has been published yet.
+Download the latest Android APK from [GitHub Releases](https://github.com/agalyaraja18/WishWallet/releases/latest). Pushing a version tag like `v1.0.0` automatically builds the APK and attaches it to the release.
 
 To build an APK locally, run `flutter build apk --release`. The APK is generated at `build/app/outputs/flutter-apk/app-release.apk`.
 
