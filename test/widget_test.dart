@@ -53,6 +53,9 @@ void main() {
     await _saveRecoveryCode(tester);
     expect(find.text('My Wishes!!!  ♥'), findsOneWidget);
     expect(find.text('Sarees'), findsNothing);
+    expect(find.text('Shirts'), findsNothing);
+    expect(find.text('Shoe'), findsNothing);
+    expect(find.text('Accessories'), findsNothing);
     expect(find.byTooltip('Add a new wish'), findsNothing);
 
     await tester.tap(find.text('My Profile'));

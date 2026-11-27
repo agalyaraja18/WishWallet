@@ -72,7 +72,7 @@ class _WishWalletAppState extends State<WishWalletApp> {
   String _serverToken = '';
   String? _serverError;
   final Map<String, int> _serverCategoryIds = {};
-  List<String> _categories = List.of(defaultCategories);
+  List<String> _categories = <String>[];
   List<Wish> _wishes = [];
 
   @override
@@ -117,7 +117,12 @@ class _WishWalletAppState extends State<WishWalletApp> {
     final prefs = await SharedPreferences.getInstance();
     var categories = prefs.getStringList(_accountKey('categories', userId));
     var savedWishes = prefs.getString(_accountKey('wishes', userId));
-    if (migrateLegacy && (categories == null || savedWishes == null)) {
+    final isLegacyAccount =
+        prefs.containsKey('passwordHash') &&
+        prefs.getString('userId') == userId;
+    if (migrateLegacy &&
+        isLegacyAccount &&
+        (categories == null || savedWishes == null)) {
       categories ??= prefs.getStringList('categories');
       savedWishes ??= prefs.getString('wishes');
     }
