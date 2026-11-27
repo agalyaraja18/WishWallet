@@ -10,9 +10,16 @@
 - Keep account and wishlist data saved locally or through the API.
 - Use a one-time recovery code to reset a forgotten password.
 
-## Download APK
+## Download
 
-Download the latest Android APK from [GitHub Releases](https://github.com/agalyaraja18/WishWallet/releases/latest). After setting the `WISHWALLET_API_BASE_URL` repository variable, pushing a version tag automatically builds an API-enabled APK and attaches it to the release.
+| Platform | Link |
+| --- | --- |
+| 🤖 Android | [Download APK](https://github.com/agalyaraja18/WishWallet/releases/latest/download/app-release.apk) |
+| 🌐 Web | [Download Web Bundle](https://github.com/agalyaraja18/WishWallet/releases/latest/download/web-bundle.zip) |
+
+> The APK and Web bundle are built automatically by GitHub Actions when a version tag is pushed and attached to the release.
+
+## Product lookup setup
 
 An APK built without an API URL works in local/offline mode: enter wish names and links manually, but automatic product lookup is unavailable.
 
@@ -24,7 +31,7 @@ An APK built without an API URL works in local/offline mode: enter wish names an
 4. In the GitHub repository, open **Settings → Secrets and variables → Actions → Variables**, create `WISHWALLET_API_BASE_URL`, and set it to the service URL without a trailing slash.
 5. Push a new version tag (for example, `v1.0.1`). The release workflow builds an APK with that API URL and attaches it to the GitHub release.
 
-Neon's current Free plan has no 30-day database expiry, but has usage limits and provider plans can change; no provider can guarantee free hosting forever. Render's free API service can sleep between requests, so the app allows up to 90 seconds for a lookup to give it time to wake up. For a local APK build after deploying, run:
+Neon's current Free plan has no 30-day database expiry, but has usage limits and provider plans can change; no provider can guarantee free hosting forever. Render's free API service can sleep between requests, so the app allows up to 90 seconds for a lookup to give it time to wake up. If you host the Web bundle on a website, add that website's origin to the Render service's `ALLOWED_ORIGINS` environment variable. For a local APK build after deploying, run:
 
 ```sh
 flutter build apk --release --dart-define=API_BASE_URL=https://your-api.example.com

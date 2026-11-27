@@ -51,10 +51,20 @@ jobs:
           API_BASE_URL: ${{ vars.WISHWALLET_API_BASE_URL }}
         run: flutter build apk --release --dart-define="API_BASE_URL=$API_BASE_URL"
 
+      - name: Build Web bundle
+        env:
+          API_BASE_URL: ${{ vars.WISHWALLET_API_BASE_URL }}
+        run: |
+          flutter build web --release --dart-define="API_BASE_URL=$API_BASE_URL"
+          cd build/web
+          zip -r ../web-bundle.zip .
+
       - name: Publish APK to GitHub Releases
         uses: softprops/action-gh-release@v2
         with:
           name: WishWallet ${{ github.ref_name }}
           generate_release_notes: true
-          files: build/app/outputs/flutter-apk/app-release.apk
+          files: |
+            build/app/outputs/flutter-apk/app-release.apk
+            build/web-bundle.zip
           fail_on_unmatched_files: true
