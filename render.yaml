@@ -9,15 +9,6 @@ services:
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: DATABASE_URL
-        fromDatabase:
-          name: wishwallet-db
-          property: connectionString
+        sync: false
       - key: JWT_SECRET
         generateValue: true
-
-databases:
-  - name: wishwallet-db
-    databaseName: wishwallet
-    user: wishwallet
-    plan: free
-    region: oregon

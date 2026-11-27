@@ -16,14 +16,15 @@ Download the latest Android APK from [GitHub Releases](https://github.com/agalya
 
 An APK built without an API URL works in local/offline mode: enter wish names and links manually, but automatic product lookup is unavailable.
 
-### Deploy a free test API on Render
+### Deploy with a free Neon database and Render API
 
-1. Sign in to [Render](https://dashboard.render.com/) and create a Blueprint from this GitHub repository. Render reads [`render.yaml`](./render.yaml) and creates the API and PostgreSQL database.
-2. Wait for the `wishwallet-api` service to finish deploying, then copy its HTTPS URL from the Render dashboard.
-3. In the GitHub repository, open **Settings → Secrets and variables → Actions → Variables**, create `WISHWALLET_API_BASE_URL`, and set it to the service URL without a trailing slash.
-4. Push a new version tag (for example, `v1.0.1`). The release workflow builds an APK with that API URL and attaches it to the GitHub release.
+1. Create a free PostgreSQL project in [Neon](https://neon.tech/). Copy its PostgreSQL connection string and keep it private.
+2. In [Render](https://dashboard.render.com/), create a Blueprint from this GitHub repository. When prompted for `DATABASE_URL`, paste the Neon connection string. The Blueprint creates only the `wishwallet-api` service; it does not create a Render database.
+3. Wait for the API service to finish deploying, then copy its HTTPS URL from Render.
+4. In the GitHub repository, open **Settings → Secrets and variables → Actions → Variables**, create `WISHWALLET_API_BASE_URL`, and set it to the service URL without a trailing slash.
+5. Push a new version tag (for example, `v1.0.1`). The release workflow builds an APK with that API URL and attaches it to the GitHub release.
 
-This free setup is for testing only: Render's free API service can sleep between requests, and its free PostgreSQL database expires after 30 days, which deletes its data. The app allows up to 90 seconds for a lookup so the API has time to wake up. For a local APK build after deploying, run:
+Neon's current Free plan has no 30-day database expiry, but has usage limits and provider plans can change; no provider can guarantee free hosting forever. Render's free API service can sleep between requests, so the app allows up to 90 seconds for a lookup to give it time to wake up. For a local APK build after deploying, run:
 
 ```sh
 flutter build apk --release --dart-define=API_BASE_URL=https://your-api.example.com
