@@ -30,8 +30,26 @@ jobs:
       - name: Install Flutter dependencies
         run: flutter pub get
 
+      - name: Validate API base URL
+        env:
+          API_BASE_URL: ${{ vars.WISHWALLET_API_BASE_URL }}
+        run: |
+          if [ -z "$API_BASE_URL" ]; then
+            echo "::error::Set the WISHWALLET_API_BASE_URL repository variable to the deployed API URL."
+            exit 1
+          fi
+          case "$API_BASE_URL" in
+            https://*) ;;
+            *) echo "::error::WISHWALLET_API_BASE_URL must use HTTPS."; exit 1 ;;
+          esac
+          case "$API_BASE_URL" in
+            */) echo "::error::WISHWALLET_API_BASE_URL must not end with a slash."; exit 1 ;;
+          esac
+
       - name: Build release APK
-        run: flutter build apk --release
+        env:
+          API_BASE_URL: ${{ vars.WISHWALLET_API_BASE_URL }}
+        run: flutter build apk --release --dart-define="API_BASE_URL=$API_BASE_URL"
 
       - name: Publish APK to GitHub Releases
         uses: softprops/action-gh-release@v2

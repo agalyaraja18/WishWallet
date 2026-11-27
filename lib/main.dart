@@ -1754,6 +1754,14 @@ class _AddWishScreenState extends State<AddWishScreen> {
   late String _category = widget.categories.first;
   bool _scanning = false;
 
+  bool get _canSaveManually {
+    if (apiBaseUrl.isNotEmpty || _name.text.trim().isEmpty) return false;
+    final uri = Uri.tryParse(_url.text.trim());
+    return uri != null &&
+        uri.host.isNotEmpty &&
+        {'http', 'https'}.contains(uri.scheme);
+  }
+
   @override
   void dispose() {
     _name.dispose();
@@ -1775,11 +1783,14 @@ class _AddWishScreenState extends State<AddWishScreen> {
     if (apiBaseUrl.isEmpty) {
       setState(() {
         _scannedUrl = null;
-        _scanError = 'Price lookup needs the WishWallet API. Start the backend and launch Chrome with API_BASE_URL configured.';
+        _scanError =
+            'Automatic lookup is unavailable: this APK has no API configured. Enter the name to save manually.';
       });
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Start the WishWallet API to fetch product prices.'),
+          content: Text(
+            'Product lookup needs a hosted WishWallet API. You can still add this wish manually.',
+          ),
         ),
       );
       return;
@@ -1802,7 +1813,7 @@ class _AddWishScreenState extends State<AddWishScreen> {
             },
             body: jsonEncode({'url': uri.toString()}),
           )
-          .timeout(const Duration(seconds: 20));
+          .timeout(const Duration(seconds: 90));
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw Exception(
           'The store could not be scanned (${response.statusCode}).',
@@ -1854,7 +1865,8 @@ class _AddWishScreenState extends State<AddWishScreen> {
       );
       return;
     }
-    if (_scannedUrl != url || _fetchedPrice == null) {
+    if (apiBaseUrl.isNotEmpty &&
+        (_scannedUrl != url || _fetchedPrice == null)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Fetch the product price from its link before saving.'),
@@ -1905,6 +1917,7 @@ class _AddWishScreenState extends State<AddWishScreen> {
         _fieldLabel('PRODUCT NAME'),
         TextField(
           controller: _name,
+          onChanged: (_) => setState(() {}),
           decoration: const InputDecoration(
             prefixIcon: Icon(
               Icons.shopping_bag_outlined,
@@ -2010,7 +2023,9 @@ class _AddWishScreenState extends State<AddWishScreen> {
             width: 175,
             child: _PrimaryButton(
               label: '♥  Save My Wish',
-              onPressed: !_scanning && _scannedUrl == _url.text.trim()
+              onPressed:
+                  !_scanning &&
+                      (_scannedUrl == _url.text.trim() || _canSaveManually)
                   ? _saveWish
                   : null,
             ),

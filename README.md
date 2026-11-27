@@ -4,7 +4,7 @@
 
 ## Features
 
-- Save product links and fetch product names, prices, and images when the store provides them.
+- Save product links manually while offline, or fetch product names, prices, and images when connected to the WishWallet API.
 - Organize wishes into custom categories.
 - Add and remove wishes and categories.
 - Keep account and wishlist data saved locally or through the API.
@@ -12,9 +12,24 @@
 
 ## Download APK
 
-Download the latest Android APK from [GitHub Releases](https://github.com/agalyaraja18/WishWallet/releases/latest). Pushing a version tag like `v1.0.0` automatically builds the APK and attaches it to the release.
+Download the latest Android APK from [GitHub Releases](https://github.com/agalyaraja18/WishWallet/releases/latest). After setting the `WISHWALLET_API_BASE_URL` repository variable, pushing a version tag automatically builds an API-enabled APK and attaches it to the release.
 
-To build an APK locally, run `flutter build apk --release`. The APK is generated at `build/app/outputs/flutter-apk/app-release.apk`.
+An APK built without an API URL works in local/offline mode: enter wish names and links manually, but automatic product lookup is unavailable.
+
+### Deploy a free test API on Render
+
+1. Sign in to [Render](https://dashboard.render.com/) and create a Blueprint from this GitHub repository. Render reads [`render.yaml`](./render.yaml) and creates the API and PostgreSQL database.
+2. Wait for the `wishwallet-api` service to finish deploying, then copy its HTTPS URL from the Render dashboard.
+3. In the GitHub repository, open **Settings → Secrets and variables → Actions → Variables**, create `WISHWALLET_API_BASE_URL`, and set it to the service URL without a trailing slash.
+4. Push a new version tag (for example, `v1.0.1`). The release workflow builds an APK with that API URL and attaches it to the GitHub release.
+
+This free setup is for testing only: Render's free API service can sleep between requests, and its free PostgreSQL database expires after 30 days, which deletes its data. The app allows up to 90 seconds for a lookup so the API has time to wake up. For a local APK build after deploying, run:
+
+```sh
+flutter build apk --release --dart-define=API_BASE_URL=https://your-api.example.com
+```
+
+Use the Render URL in place of `https://your-api.example.com`, without a trailing slash. The APK is generated at `build/app/outputs/flutter-apk/app-release.apk`.
 
 ## Project Structure
 

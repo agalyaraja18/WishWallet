@@ -103,8 +103,21 @@ void main() {
           .onPressed,
       isNull,
     );
-    await tester.tap(find.byIcon(Icons.arrow_back_ios_new));
+    await tester.enterText(
+      find.byType(TextField).at(1),
+      'https://example.com/saree',
+    );
+    await tester.tap(find.text('Fetch name and price from link'));
     await tester.pumpAndSettle();
+    expect(
+      find.textContaining('Automatic lookup is unavailable:'),
+      findsOneWidget,
+    );
+    await tester.enterText(find.byType(TextField).at(0), 'Manual Saree');
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ElevatedButton, '♥  Save My Wish'));
+    await tester.pumpAndSettle();
+    expect(find.text('Manual Saree'), findsOneWidget);
 
     await tester.tap(find.text('＋ Create a category'));
     await tester.pumpAndSettle();
