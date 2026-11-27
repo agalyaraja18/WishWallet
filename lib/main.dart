@@ -243,7 +243,19 @@ class _WishWalletAppState extends State<WishWalletApp> {
             }),
           )
           .timeout(const Duration(seconds: 15));
-      if (response.statusCode != 201) return false;
+      if (response.statusCode == 409) return false;
+      if (response.statusCode != 201) {
+        var message = 'Registration failed (${response.statusCode}).';
+        try {
+          final data = jsonDecode(response.body);
+          if (data is Map<String, dynamic> && data['detail'] is String) {
+            message = data['detail'] as String;
+          }
+        } on FormatException {
+          // Keep the HTTP status when the server response is not JSON.
+        }
+        throw Exception(message);
+      }
       final data = jsonDecode(response.body) as Map<String, dynamic>;
       _serverToken = data['access_token'] as String;
       _userId = userId;
@@ -1783,8 +1795,7 @@ class _AddWishScreenState extends State<AddWishScreen> {
     if (apiBaseUrl.isEmpty) {
       setState(() {
         _scannedUrl = null;
-        _scanError =
-            'Automatic lookup is unavailable: this APK has no API configured. Enter the name to save manually.';
+        _scanError = 'Automatic lookup is unavailable: this APK has no API configured. Enter the name to save manually.';
       });
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
