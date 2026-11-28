@@ -58,6 +58,13 @@ void main() {
     expect(find.text('Accessories'), findsNothing);
     expect(find.byTooltip('Add a new wish'), findsNothing);
 
+    await tester.tap(find.text('＋ Add a new wish'));
+    await tester.pumpAndSettle();
+    expect(find.text('Add a new Wish'), findsOneWidget);
+    expect(find.text('Create a category'), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.arrow_back_ios_new));
+    await tester.pumpAndSettle();
+
     await tester.tap(find.text('My Profile'));
     await tester.pumpAndSettle();
     expect(find.text('Wish it. Want it. Win it.'), findsOneWidget);
@@ -152,6 +159,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Continue with demo account'));
     await tester.pumpAndSettle();
+    expect(find.text('Manual Saree'), findsOneWidget);
     await tester.drag(find.byType(ListView).last, const Offset(0, -1000));
     await tester.pumpAndSettle();
 

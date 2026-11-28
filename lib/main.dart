@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 
@@ -72,6 +73,8 @@ class _WishWalletAppState extends State<WishWalletApp> {
   String _serverToken = '';
   String? _serverError;
   final Map<String, int> _serverCategoryIds = {};
+  final Set<String> _removedCategories = {};
+  final Set<String> _removedWishes = {};
   List<String> _categories = <String>[];
   List<Wish> _wishes = [];
 
@@ -95,9 +98,10 @@ class _WishWalletAppState extends State<WishWalletApp> {
       _signedIn = signedIn;
       _ready = true;
     });
-    if (signedIn && apiBaseUrl.isEmpty) {
+    if (signedIn) {
       await _loadLocalData(userId, migrateLegacy: true);
-    } else if (signedIn) {
+    }
+    if (signedIn && apiBaseUrl.isNotEmpty) {
       try {
         await _loadServerData();
       } on Exception catch (error) {
@@ -117,6 +121,14 @@ class _WishWalletAppState extends State<WishWalletApp> {
     final prefs = await SharedPreferences.getInstance();
     var categories = prefs.getStringList(_accountKey('categories', userId));
     var savedWishes = prefs.getString(_accountKey('wishes', userId));
+    _removedCategories
+      ..clear()
+      ..addAll(
+        prefs.getStringList(_accountKey('removedCategories', userId)) ?? [],
+      );
+    _removedWishes
+      ..clear()
+      ..addAll(prefs.getStringList(_accountKey('removedWishes', userId)) ?? []);
     final isLegacyAccount =
         prefs.containsKey('passwordHash') &&
         prefs.getString('userId') == userId;
@@ -167,7 +179,7 @@ class _WishWalletAppState extends State<WishWalletApp> {
 
   Future<void> _save() async {
     final prefs = await SharedPreferences.getInstance();
-    if (_userId.isNotEmpty && apiBaseUrl.isEmpty) {
+    if (_userId.isNotEmpty) {
       await prefs.setStringList(
         _accountKey('categories', _userId),
         _categories,
@@ -175,6 +187,14 @@ class _WishWalletAppState extends State<WishWalletApp> {
       await prefs.setString(
         _accountKey('wishes', _userId),
         jsonEncode(_wishes.map((wish) => wish.toJson()).toList()),
+      );
+      await prefs.setStringList(
+        _accountKey('removedCategories', _userId),
+        _removedCategories.toList(),
+      );
+      await prefs.setStringList(
+        _accountKey('removedWishes', _userId),
+        _removedWishes.toList(),
       );
     }
     await prefs.setString('userId', _userId);
@@ -203,26 +223,47 @@ class _WishWalletAppState extends State<WishWalletApp> {
         .timeout(const Duration(seconds: 15));
     if (response.statusCode != 200) throw Exception(_apiError(response));
     final rows = jsonDecode(response.body) as List<dynamic>;
-    final categories = <String>[];
-    final wishes = <Wish>[];
+    final serverCategories = <String>[];
+    final serverWishes = <Wish>[];
     _serverCategoryIds.clear();
     for (final row in rows.cast<Map<String, dynamic>>()) {
       final name = row['name'] as String;
       final categoryId = row['id'] as int;
-      categories.add(name);
+      if (_isRemovedCategory(name)) continue;
+      serverCategories.add(name);
       _serverCategoryIds[name] = categoryId;
       for (final item in (row['wishes'] as List<dynamic>)) {
         final wish = item as Map<String, dynamic>;
-        wishes.add(
-          Wish(
-            id: '${wish['id']}',
-            name: wish['name'] as String,
-            url: wish['url'] as String,
-            category: name,
-            price: (wish['price'] as num?)?.toDouble(),
-            imageUrl: wish['image_url'] as String?,
-          ),
+        final serverWish = Wish(
+          id: '${wish['id']}',
+          name: wish['name'] as String,
+          url: wish['url'] as String,
+          category: name,
+          price: (wish['price'] as num?)?.toDouble(),
+          imageUrl: wish['image_url'] as String?,
         );
+        if (!_removedWishes.contains(_wishKey(serverWish))) {
+          serverWishes.add(serverWish);
+        }
+      }
+    }
+    final categories = [...serverCategories];
+    for (final category in _categories) {
+      if (!categories.any(
+        (saved) => saved.toLowerCase() == category.toLowerCase(),
+      )) {
+        categories.add(category);
+      }
+    }
+    final wishes = [...serverWishes];
+    for (final wish in _wishes) {
+      if (!wishes.any(
+        (saved) =>
+            saved.category == wish.category &&
+            saved.name == wish.name &&
+            saved.url == wish.url,
+      )) {
+        wishes.add(wish);
       }
     }
     if (!mounted) return;
@@ -267,6 +308,7 @@ class _WishWalletAppState extends State<WishWalletApp> {
       _pendingRecoveryCode = recoveryCode;
       _signedIn = true;
       setState(() {});
+      await _loadLocalData(userId);
       try {
         await _loadServerData();
       } on Exception catch (error) {
@@ -345,6 +387,7 @@ class _WishWalletAppState extends State<WishWalletApp> {
       _pendingRecoveryCode = data['recovery_code'] as String?;
       _signedIn = true;
       setState(() {});
+      await _loadLocalData(userId, migrateLegacy: true);
       try {
         await _loadServerData();
       } on Exception catch (error) {
@@ -461,11 +504,22 @@ class _WishWalletAppState extends State<WishWalletApp> {
       await prefs.setString('localRecoveryCodes', jsonEncode(recoveryCodes));
       await prefs.remove(_accountKey('categories', userId));
       await prefs.remove(_accountKey('wishes', userId));
+      await prefs.remove(_accountKey('removedCategories', userId));
+      await prefs.remove(_accountKey('removedWishes', userId));
       if (prefs.getString('userId') == userId) {
         await prefs.remove('passwordHash');
         await prefs.remove('categories');
         await prefs.remove('wishes');
       }
+    }
+    final prefs = await SharedPreferences.getInstance();
+    for (final key in [
+      'categories',
+      'wishes',
+      'removedCategories',
+      'removedWishes',
+    ]) {
+      await prefs.remove(_accountKey(key, userId));
     }
     if (!mounted) return;
     setState(() {
@@ -477,6 +531,8 @@ class _WishWalletAppState extends State<WishWalletApp> {
       _wishes = [];
       _serverError = null;
       _serverCategoryIds.clear();
+      _removedCategories.clear();
+      _removedWishes.clear();
     });
     await _save();
   }
@@ -549,6 +605,12 @@ class _WishWalletAppState extends State<WishWalletApp> {
         _accountKey('categories', oldUserId),
       );
       final wishes = prefs.getString(_accountKey('wishes', oldUserId));
+      final removedCategories = prefs.getStringList(
+        _accountKey('removedCategories', oldUserId),
+      );
+      final removedWishes = prefs.getStringList(
+        _accountKey('removedWishes', oldUserId),
+      );
       final recoveryCodes = _readLocalRecoveryCodes(prefs);
       final recoveryCodeHash = recoveryCodes.remove(oldUserId);
       if (recoveryCodeHash != null) {
@@ -565,8 +627,42 @@ class _WishWalletAppState extends State<WishWalletApp> {
       if (wishes != null) {
         await prefs.setString(_accountKey('wishes', trimmedUserId), wishes);
       }
+      if (removedCategories != null) {
+        await prefs.setStringList(
+          _accountKey('removedCategories', trimmedUserId),
+          removedCategories,
+        );
+      }
+      if (removedWishes != null) {
+        await prefs.setStringList(
+          _accountKey('removedWishes', trimmedUserId),
+          removedWishes,
+        );
+      }
       await prefs.remove(_accountKey('categories', oldUserId));
       await prefs.remove(_accountKey('wishes', oldUserId));
+      await prefs.remove(_accountKey('removedCategories', oldUserId));
+      await prefs.remove(_accountKey('removedWishes', oldUserId));
+    }
+    if (apiBaseUrl.isNotEmpty) {
+      final prefs = await SharedPreferences.getInstance();
+      for (final key in [
+        'categories',
+        'wishes',
+        'removedCategories',
+        'removedWishes',
+      ]) {
+        final oldKey = _accountKey(key, _userId);
+        final newKey = _accountKey(key, trimmedUserId);
+        if (key == 'categories' || key.startsWith('removed')) {
+          final value = prefs.getStringList(oldKey);
+          if (value != null) await prefs.setStringList(newKey, value);
+        } else {
+          final value = prefs.getString(oldKey);
+          if (value != null) await prefs.setString(newKey, value);
+        }
+        await prefs.remove(oldKey);
+      }
     }
     if (!mounted) return false;
     setState(() => _userId = trimmedUserId);
@@ -575,12 +671,66 @@ class _WishWalletAppState extends State<WishWalletApp> {
   }
 
   Future<void> _addWish(Wish wish) async {
-    var savedWish = wish;
-    if (apiBaseUrl.isNotEmpty) {
-      final categoryId = _serverCategoryIds[wish.category];
-      if (categoryId == null) {
-        throw StateError('The selected category is unavailable.');
-      }
+    _removedWishes.remove(_wishKey(wish));
+    setState(() => _wishes = [..._wishes, wish]);
+    await _save();
+    if (apiBaseUrl.isNotEmpty) unawaited(_syncWish(wish));
+  }
+
+  Future<void> _removeWish(Wish wish) async {
+    _removedWishes.add(_wishKey(wish));
+    setState(() => _wishes.removeWhere((item) => item.id == wish.id));
+    await _save();
+    if (apiBaseUrl.isNotEmpty) unawaited(_syncRemoveWish(wish));
+  }
+
+  Future<void> _addCategory(String name) async {
+    _removedCategories.removeWhere(
+      (removed) => removed.toLowerCase() == name.toLowerCase(),
+    );
+    setState(() => _categories = [..._categories, name]);
+    await _save();
+    if (apiBaseUrl.isNotEmpty) unawaited(_syncCategory(name));
+  }
+
+  Future<void> _removeCategory(String category) async {
+    _removedCategories.add(category);
+    _removedWishes.addAll(
+      _wishes.where((wish) => wish.category == category).map(_wishKey),
+    );
+    setState(() {
+      _categories.remove(category);
+      _wishes.removeWhere((wish) => wish.category == category);
+    });
+    await _save();
+    if (apiBaseUrl.isNotEmpty) unawaited(_syncRemoveCategory(category));
+  }
+
+  Future<void> _syncCategory(String name) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$apiBaseUrl/api/categories'),
+            headers: _authHeaders,
+            body: jsonEncode({'name': name}),
+          )
+          .timeout(const Duration(seconds: 15));
+      if (response.statusCode != 201) throw Exception(_apiError(response));
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      _serverCategoryIds[name] = data['id'] as int;
+      _setServerError(null);
+    } on Exception catch (error) {
+      _setServerError('Category saved on this device; API sync failed: $error');
+    }
+  }
+
+  Future<void> _syncWish(Wish wish) async {
+    final categoryId = _serverCategoryIds[wish.category];
+    if (categoryId == null) {
+      _setServerError('Wish saved on this device; category sync is pending.');
+      return;
+    }
+    try {
       final response = await http
           .post(
             Uri.parse('$apiBaseUrl/api/wishes'),
@@ -596,7 +746,7 @@ class _WishWalletAppState extends State<WishWalletApp> {
           .timeout(const Duration(seconds: 15));
       if (response.statusCode != 201) throw Exception(_apiError(response));
       final data = jsonDecode(response.body) as Map<String, dynamic>;
-      savedWish = Wish(
+      final savedWish = Wish(
         id: '${data['id']}',
         name: data['name'] as String,
         url: data['url'] as String,
@@ -604,15 +754,22 @@ class _WishWalletAppState extends State<WishWalletApp> {
         price: (data['price'] as num?)?.toDouble(),
         imageUrl: data['image_url'] as String?,
       );
+      setState(() {
+        _wishes = _wishes
+            .map((item) => item.id == wish.id ? savedWish : item)
+            .toList();
+      });
+      await _save();
+      _setServerError(null);
+    } on Exception catch (error) {
+      _setServerError('Wish saved on this device; API sync failed: $error');
     }
-    setState(() => _wishes = [..._wishes, savedWish]);
-    await _save();
   }
 
-  Future<void> _removeWish(Wish wish) async {
-    if (apiBaseUrl.isNotEmpty) {
-      final wishId = int.tryParse(wish.id);
-      if (wishId == null) throw StateError('The selected wish is unavailable.');
+  Future<void> _syncRemoveWish(Wish wish) async {
+    final wishId = int.tryParse(wish.id);
+    if (wishId == null) return;
+    try {
       final response = await http
           .delete(
             Uri.parse('$apiBaseUrl/api/wishes/$wishId'),
@@ -620,34 +777,16 @@ class _WishWalletAppState extends State<WishWalletApp> {
           )
           .timeout(const Duration(seconds: 15));
       if (response.statusCode != 204) throw Exception(_apiError(response));
+      _setServerError(null);
+    } on Exception catch (error) {
+      _setServerError('Wish removed on this device; API sync failed: $error');
     }
-    setState(() => _wishes.removeWhere((item) => item.id == wish.id));
-    await _save();
   }
 
-  Future<void> _addCategory(String name) async {
-    if (apiBaseUrl.isNotEmpty) {
-      final response = await http
-          .post(
-            Uri.parse('$apiBaseUrl/api/categories'),
-            headers: _authHeaders,
-            body: jsonEncode({'name': name}),
-          )
-          .timeout(const Duration(seconds: 15));
-      if (response.statusCode != 201) throw Exception(_apiError(response));
-      final data = jsonDecode(response.body) as Map<String, dynamic>;
-      _serverCategoryIds[name] = data['id'] as int;
-    }
-    setState(() => _categories = [..._categories, name]);
-    await _save();
-  }
-
-  Future<void> _removeCategory(String category) async {
-    if (apiBaseUrl.isNotEmpty) {
-      final categoryId = _serverCategoryIds[category];
-      if (categoryId == null) {
-        throw StateError('The selected category is unavailable.');
-      }
+  Future<void> _syncRemoveCategory(String category) async {
+    final categoryId = _serverCategoryIds[category];
+    if (categoryId == null) return;
+    try {
       final response = await http
           .delete(
             Uri.parse('$apiBaseUrl/api/categories/$categoryId'),
@@ -656,13 +795,27 @@ class _WishWalletAppState extends State<WishWalletApp> {
           .timeout(const Duration(seconds: 15));
       if (response.statusCode != 204) throw Exception(_apiError(response));
       _serverCategoryIds.remove(category);
+      _setServerError(null);
+    } on Exception catch (error) {
+      _setServerError(
+        'Category removed on this device; API sync failed: $error',
+      );
     }
-    setState(() {
-      _categories.remove(category);
-      _wishes.removeWhere((wish) => wish.category == category);
-    });
-    await _save();
   }
+
+  void _setServerError(String? error) {
+    if (mounted) setState(() => _serverError = error);
+  }
+
+  bool _isRemovedCategory(String name) => _removedCategories.any(
+    (removed) => removed.toLowerCase() == name.toLowerCase(),
+  );
+
+  String _wishKey(Wish wish) => jsonEncode([
+    wish.category.toLowerCase(),
+    wish.name.toLowerCase(),
+    wish.url,
+  ]);
 
   @override
   Widget build(BuildContext context) {
@@ -1460,14 +1613,13 @@ class _Dashboard extends StatelessWidget {
   }
 
   Future<void> _showAddWish(BuildContext context) async {
-    if (categories.isEmpty) {
-      await _showAddCategory(context);
-      return;
-    }
     final wish = await Navigator.of(context).push<Wish>(
       MaterialPageRoute(
-        builder: (_) =>
-            AddWishScreen(categories: categories, serverToken: serverToken),
+        builder: (_) => AddWishScreen(
+          categories: categories,
+          serverToken: serverToken,
+          onCreateCategory: _createCategoryForWish,
+        ),
       ),
     );
     if (wish != null) {
@@ -1484,14 +1636,19 @@ class _Dashboard extends StatelessWidget {
   }
 
   Future<void> _showAddCategory(BuildContext context) async {
+    await _createCategoryForWish(context);
+  }
+
+  Future<String?> _createCategoryForWish(BuildContext context) async {
     final name = await Navigator.of(context).push<String>(
       MaterialPageRoute(builder: (_) => const AddCategoryScreen()),
     );
-    if (!context.mounted) return;
+    if (!context.mounted) return null;
     if (name != null &&
         !categories.any((item) => item.toLowerCase() == name.toLowerCase())) {
       try {
         await onAddCategory(name);
+        return name;
       } on Exception catch (error) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -1504,6 +1661,7 @@ class _Dashboard extends StatelessWidget {
         const SnackBar(content: Text('That category already exists.')),
       );
     }
+    return null;
   }
 
   Future<void> _confirmDelete(BuildContext context, String category) async {
@@ -1752,10 +1910,12 @@ class AddWishScreen extends StatefulWidget {
   const AddWishScreen({
     required this.categories,
     required this.serverToken,
+    required this.onCreateCategory,
     super.key,
   });
   final List<String> categories;
   final String serverToken;
+  final Future<String?> Function(BuildContext) onCreateCategory;
 
   @override
   State<AddWishScreen> createState() => _AddWishScreenState();
@@ -1764,15 +1924,16 @@ class AddWishScreen extends StatefulWidget {
 class _AddWishScreenState extends State<AddWishScreen> {
   final _name = TextEditingController();
   final _url = TextEditingController();
+  late final List<String> _categories = List.of(widget.categories);
   String? _imageUrl;
   String? _scannedUrl;
   String? _scanError;
   double? _fetchedPrice;
-  late String _category = widget.categories.first;
+  late String? _category = _categories.isEmpty ? null : _categories.first;
   bool _scanning = false;
 
   bool get _canSaveManually {
-    if (apiBaseUrl.isNotEmpty || _name.text.trim().isEmpty) return false;
+    if (_name.text.trim().isEmpty) return false;
     final uri = Uri.tryParse(_url.text.trim());
     return uri != null &&
         uri.host.isNotEmpty &&
@@ -1881,12 +2042,9 @@ class _AddWishScreenState extends State<AddWishScreen> {
       );
       return;
     }
-    if (apiBaseUrl.isNotEmpty &&
-        (_scannedUrl != url || _fetchedPrice == null)) {
+    if (_category == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Fetch the product price from its link before saving.'),
-        ),
+        const SnackBar(content: Text('Create a category before saving.')),
       );
       return;
     }
@@ -1896,7 +2054,7 @@ class _AddWishScreenState extends State<AddWishScreen> {
         id: DateTime.now().microsecondsSinceEpoch.toString(),
         name: _name.text.trim(),
         url: url,
-        category: _category,
+        category: _category!,
         price: _fetchedPrice,
         imageUrl: _imageUrl,
       ),
@@ -2017,21 +2175,35 @@ class _AddWishScreenState extends State<AddWishScreen> {
           ),
         const SizedBox(height: 17),
         _fieldLabel('CATEGORY'),
-        DropdownButtonFormField<String>(
-          initialValue: _category,
-          decoration: const InputDecoration(
-            prefixIcon: Icon(Icons.folder_outlined, color: pink),
+        if (_categories.isEmpty)
+          OutlinedButton.icon(
+            onPressed: () async {
+              final category = await widget.onCreateCategory(context);
+              if (!mounted || category == null) return;
+              setState(() {
+                _categories.add(category);
+                _category = category;
+              });
+            },
+            icon: const Icon(Icons.create_new_folder_outlined),
+            label: const Text('Create a category'),
+          )
+        else
+          DropdownButtonFormField<String>(
+            initialValue: _category ?? _categories.first,
+            decoration: const InputDecoration(
+              prefixIcon: Icon(Icons.folder_outlined, color: pink),
+            ),
+            items: _categories
+                .map(
+                  (category) =>
+                      DropdownMenuItem(value: category, child: Text(category)),
+                )
+                .toList(),
+            onChanged: (value) {
+              if (value != null) setState(() => _category = value);
+            },
           ),
-          items: widget.categories
-              .map(
-                (category) =>
-                    DropdownMenuItem(value: category, child: Text(category)),
-              )
-              .toList(),
-          onChanged: (value) {
-            if (value != null) setState(() => _category = value);
-          },
-        ),
         const SizedBox(height: 34),
         Align(
           alignment: Alignment.centerRight,
